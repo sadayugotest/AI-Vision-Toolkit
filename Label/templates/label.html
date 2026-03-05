@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8"/>
+<title>Label Tool</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="stylesheet" href="/static/label.css"/>
+</head>
+<body>
+
+<!-- ── Topbar ── -->
+<div class="topbar">
+  <span style="font-size:1.4rem">&#127991;</span>
+  <div>
+    <h1>Label Tool</h1>
+    <div class="sub">อัปโหลดรูปภาพหรือวิดีโอเพื่อ Label</div>
+  </div>
+  <div id="sessionBadge" style="margin-left:auto;font-size:.75rem;color:var(--muted);"></div>
+</div>
+
+<!-- ── Upload Panel ── -->
+<div class="upload-panel">
+  <div class="field">
+    <label>&#128193; อัปโหลด Folder รูปภาพ</label>
+    <input type="file" id="folderInput" multiple accept="image/*" webkitdirectory directory/>
+  </div>
+  <button class="btn btn-green" onclick="doUploadImages()">&#11014; โหลดรูปภาพ</button>
+  <div class="sep"></div>
+  <div class="field">
+    <label>&#127916; อัปโหลดไฟล์วิดีโอ</label>
+    <input type="file" id="videoInput" accept="video/*"/>
+  </div>
+  <div class="fps-group">
+    <label>รูป/วินาที</label>
+    <input type="number" id="fpsInput" value="1" min="0.1" max="30" step="0.1"/>
+  </div>
+  <button class="btn btn-blue" onclick="doUploadVideo()">&#127902; Extract Frames</button>
+</div>
+
+<!-- ── Task Tab Bar ── -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-task="detect"   onclick="switchTask('detect')">&#128247; Detect</button>
+  <button class="tab-btn"        data-task="segment"  onclick="switchTask('segment')">&#9999;&#65039; Segment</button>
+  <button class="tab-btn"        data-task="classify" onclick="switchTask('classify')">&#127991; Classify</button>
+  <button class="tab-btn"        data-task="anomalib" onclick="switchTask('anomalib')">&#128202; Anomalib</button>
+</div>
+
+<!-- ── Main Layout ── -->
+<div class="main">
+
+  <!-- Left: Thumbnail Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div id="sidebarEmpty" style="padding:16px 8px;text-align:center;color:var(--muted);font-size:.75rem;">
+      ยังไม่มีรูปภาพ
+    </div>
+  </div>
+
+  <!-- Center: Canvas Area -->
+  <div class="canvas-area" id="canvasArea">
+
+    <!-- detect toolbar -->
+    <div class="canvas-toolbar" id="detectToolbar">
+      <label>เครื่องมือ:</label>
+      <button class="tool-btn active" id="toolDraw"   onclick="setTool('draw')"  >&#9632; วาด Box</button>
+      <button class="tool-btn"        id="toolSelect" onclick="setTool('select')">&#8645; เลือก/ย้าย</button>
+      <div class="sep"></div>
+      <button class="btn btn-warn"  onclick="deleteSelectedBox()" id="btnDelBox" disabled>&#128465; ลบ Box</button>
+      <button class="btn btn-red"   onclick="clearAllBoxes()">❌ ล้างทั้งหมด</button>
+      <div class="sep"></div>
+      <button class="btn btn-green" onclick="saveLabels()" id="btnSave" disabled>&#128190; บันทึก Label</button>
+      <span class="save-badge" id="saveBadge">ยังไม่บันทึก</span>
+      <div class="sep"></div>
+      <label style="font-size:.75rem;color:var(--muted);">Val:</label>
+      <input type="range" id="detectValSlider" min="0" max="50" value="20" step="5"
+             oninput="document.getElementById('detectValVal').textContent=this.value"
+             style="width:70px;cursor:pointer;accent-color:var(--accent2);"/>
+      <span id="detectValVal" style="font-size:.8rem;min-width:28px;">20</span><span style="font-size:.75rem;color:var(--muted)">%</span>
+      <button class="btn btn-blue" onclick="doExportDetect()">&#128229; Export ZIP</button>
+    </div>
+
+    <!-- segment toolbar -->
+    <div class="canvas-toolbar" id="segToolbar">
+      <!-- Tool selector -->
+      <label>เครื่องมือ:</label>
+      <button class="tool-btn active" id="segToolPoly"  onclick="setSegTool('polygon')">&#11041; Polygon</button>
+      <button class="tool-btn"        id="segToolBrush" onclick="setSegTool('brush')">&#128396; Brush</button>
+      <!-- Brush size (hidden when polygon) -->
+      <div id="brushControls" style="display:none;align-items:center;gap:6px;">
+        <label style="margin-left:6px">ขนาด:</label>
+        <input type="range" id="brushSizeSlider" min="5" max="150" value="20"
+               oninput="brushSize=+this.value; document.getElementById('brushSizeVal').textContent=this.value"
+               style="width:90px;cursor:pointer;accent-color:var(--accent2);"/>
+        <span id="brushSizeVal" style="min-width:24px;text-align:right;font-size:.8rem;">20</span><span style="font-size:.75rem;color:var(--muted)">px</span>
+      </div>
+      <div class="sep"></div>
+      <!-- Polygon-only controls -->
+      <div id="polyControls" style="display:contents;">
+        <button class="btn btn-blue"  onclick="startNewPoly()" id="btnStartPoly">&#9654; เริ่ม Polygon ใหม่</button>
+        <button class="btn btn-gray"  onclick="closePoly()">&#9632; ปิด Polygon</button>
+        <button class="btn btn-gray"  onclick="cancelPoly()">&#9747; ยกเลิก</button>
+      </div>
+      <!-- Brush confirm (hidden when polygon) -->
+      <button class="btn btn-blue" id="btnConfirmBrush" onclick="confirmBrush()" style="display:none">&#10003; ยืนยัน Brush</button>
+      <button class="btn btn-gray" id="btnClearBrush"   onclick="clearBrush()"   style="display:none">&#9003; ล้างแปรง</button>
+      <div class="sep"></div>
+      <button class="btn btn-warn"  onclick="deleteSelectedPoly()" id="btnDelPoly" disabled>&#128465; ลบ Polygon</button>
+      <button class="btn btn-red"   onclick="clearAllPolygons()">❌ ล้างทั้งหมด</button>
+      <div class="sep"></div>
+      <button class="btn btn-green" onclick="saveSegments()" id="btnSegSave" disabled>&#128190; บันทึก Segment</button>
+      <span class="save-badge" id="segSaveBadge">ยังไม่บันทึก</span>
+      <div class="sep"></div>
+      <label style="font-size:.75rem;color:var(--muted);">Val:</label>
+      <input type="range" id="segValSlider" min="0" max="50" value="20" step="5"
+             oninput="document.getElementById('segValVal').textContent=this.value"
+             style="width:70px;cursor:pointer;accent-color:var(--accent2);"/>
+      <span id="segValVal" style="font-size:.8rem;min-width:28px;">20</span><span style="font-size:.75rem;color:var(--muted)">%</span>
+      <button class="btn btn-blue" onclick="doExportSegment()">&#128229; Export ZIP</button>
+    </div>
+
+    <!-- classify toolbar -->
+    <div class="canvas-toolbar" id="clsToolbar" style="display:none;">
+      <label>เลือก Class:</label>
+      <div id="clsQuickGrid" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      <div class="sep"></div>
+      <span id="clsCurrentBadge" style="font-size:.78rem;color:var(--muted);">— ยังไม่เลือก —</span>
+      <div class="sep"></div>
+      <label style="font-size:.75rem;color:var(--muted);">แบ่ง Val:</label>
+      <input type="range" id="valSplitSlider" min="0" max="50" value="20" step="5"
+             oninput="document.getElementById('valSplitVal').textContent=this.value"
+             style="width:70px;cursor:pointer;accent-color:var(--accent2);"/>
+      <span id="valSplitVal" style="font-size:.8rem;min-width:28px;">20</span><span style="font-size:.75rem;color:var(--muted)">%</span>
+      <div class="sep"></div>
+      <button class="btn btn-blue" onclick="doExportClassify()">&#128229; Export ZIP</button>
+      <span class="save-badge" id="clsSaveBadge">ยังไม่เลือก</span>
+    </div>
+
+    <!-- anomalib toolbar -->
+    <div class="canvas-toolbar" id="anomToolbar" style="display:none;flex-wrap:wrap;gap:8px;">
+      <!-- Product name -->
+      <label style="font-size:.75rem;color:var(--muted);">Product:</label>
+      <input type="text" id="anomProductName" value="product" placeholder="ชื่อสินค้า"
+             style="width:100px;padding:4px 8px;background:#1e293b;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;"/>
+      <div class="sep"></div>
+      <!-- Good / Defect toggle -->
+      <label style="font-size:.75rem;color:var(--muted);">Label:</label>
+      <button class="tool-btn active" id="anomBtnGood"   onclick="setAnomType('good')"  >&#10004; Good</button>
+      <button class="tool-btn"        id="anomBtnDefect" onclick="setAnomType('defect')">&#9888; Defect</button>
+      <!-- Defect type (shown when defect selected) -->
+      <span id="anomDefectTypeWrap" style="display:none;align-items:center;gap:6px;">
+        <label style="font-size:.75rem;color:var(--muted);">Type:</label>
+        <input type="text" id="anomDefectType" value="scratch" placeholder="defect type"
+               style="width:90px;padding:4px 8px;background:#1e293b;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;"/>
+      </span>
+      <!-- Mask mode -->
+      <div class="sep"></div>
+      <label style="font-size:.75rem;color:var(--muted);" title="ใช้ Polygon/Brush ที่วาดไว้เป็น pixel mask">
+        <input type="checkbox" id="anomUseMask" onchange="updateAnomMaskHint()"/> Pixel Mask
+      </label>
+      <span id="anomMaskHint" style="font-size:.72rem;color:var(--muted);display:none;">(วาด Polygon/Brush ก่อน กด Assign)</span>
+      <div class="sep"></div>
+      <!-- Assign button -->
+      <button class="btn btn-blue" onclick="assignAnomLabel()">&#10003; Assign รูปนี้</button>
+      <span id="anomCurrentBadge" style="font-size:.78rem;color:var(--muted);">&#8212; ยังไม่เลือก &#8212;</span>
+      <div class="sep"></div>
+      <!-- Export -->
+      <label style="font-size:.75rem;color:var(--muted);">Val:</label>
+      <input type="range" id="anomValSlider" min="0" max="50" value="20" step="5"
+             oninput="document.getElementById('anomValVal').textContent=this.value"
+             style="width:70px;cursor:pointer;accent-color:var(--accent2);"/>
+      <span id="anomValVal" style="font-size:.8rem;min-width:28px;">20</span><span style="font-size:.75rem;color:var(--muted)">%</span>
+      <button class="btn btn-blue" onclick="doExportAnomlib()">&#128229; Export ZIP</button>
+    </div>
+
+    <!-- canvas wrapper -->
+    <div class="canvas-wrap" id="canvasWrap">
+      <div class="viewer-empty-msg" id="viewerEmpty">&#11014; อัปโหลดรูปภาพหรือวิดีโอเพื่อเริ่มต้น</div>
+      <canvas id="mainCanvas"></canvas>
+      <!-- brush overlay canvas (absolute, on top of mainCanvas, pointer-events:none) -->
+      <canvas id="brushCanvas" style="position:absolute;left:0;top:0;pointer-events:none;opacity:0.65;display:none;"></canvas>
+      <!-- brush cursor circle indicator -->
+      <div id="brushCursor"></div>
+      <div class="img-name-bar" id="imgName" style="display:none;"></div>
+      <div class="canvas-nav" id="canvasNav" style="display:none;">
+        <button onclick="navigate(-1)">&#9664; ก่อนหน้า</button>
+        <span class="idx-badge" id="idxBadge">0 / 0</span>
+        <button onclick="navigate(1)">ถัดไป &#9654;</button>
+      </div>
+    </div>
+
+  </div><!-- /canvasArea -->
+
+  <!-- Right: Class Manager -->
+  <div class="cls-panel" id="clsPanel">
+    <div class="cls-panel-hd">
+      <span>&#127774; Classes</span>
+      <span class="save-badge" id="clsBadge">0 classes</span>
+    </div>
+    <div class="cls-add-row">
+      <input type="color" id="newClsColor" value="#22c55e"/>
+      <input type="text"  id="newClsName"  placeholder="ชื่อ class..." onkeydown="if(event.key==='Enter')addClass()"/>
+      <button class="btn btn-green" style="padding:5px 10px;" onclick="addClass()">+</button>
+    </div>
+    <div class="cls-list" id="clsList"></div>
+
+    <div class="box-panel-hd">Boxes ในรูปนี้ <span id="boxCount" style="color:var(--accent2);">0</span></div>
+    <div class="box-list" id="boxList"></div>
+
+    <div class="box-panel-hd" id="polyPanelHd" style="display:none;">เส้น Polygon <span id="polyCount" style="color:var(--accent2);">0</span></div>
+    <div class="box-list" id="polyList" style="display:none;"></div>
+
+    <!-- Classify summary -->
+    <div class="box-panel-hd" id="clsSummaryHd" style="display:none;">สรุป Classify <span id="clsLabelCount" style="color:var(--accent2);">0</span>/<span id="clsTotalCount" style="color:var(--muted);">0</span></div>
+    <div class="box-list" id="clsSummaryList" style="display:none;max-height:220px;"></div>
+
+    <!-- Anomalib summary -->
+    <div class="box-panel-hd" id="anomSummaryHd" style="display:none;">&#128202; Anomalib <span id="anomLabelCount" style="color:var(--accent2);">0</span>/<span id="anomTotalCount" style="color:var(--muted);">0</span></div>
+    <div class="box-list" id="anomSummaryList" style="display:none;max-height:260px;"></div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ── Status Bar ── -->
+<div class="statusbar">
+  <span id="statusTxt">พร้อมใช้งาน</span>
+  <span id="statusCount"></span>
+</div>
+
+<!-- ── Spinner Overlay ── -->
+<div class="spinner-overlay" id="spinnerOverlay">
+  <div class="spin-ring"></div>
+  <div class="spin-txt" id="spinTxt">กำลังประมวลผล...</div>
+</div>
+
+<script src="/static/label.js"></script>
+</body>
+</html>
