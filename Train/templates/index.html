@@ -1,0 +1,677 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>YOLO Trainer Web + Upload</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+:root{
+  --bg:#0b1220; --bg2:#0e1526;
+  --card:#111827; --card2:#0f172a;
+  --text:#e5e7eb; --muted:#cbd5e1;
+  --accent:#22c55e; --accent2:#3b82f6; --accent3:#f43f5e;
+  --border:#1f2937; --shadow:rgba(0,0,0,.35);
+  --gap:12px;
+}
+html,body{height:100%}
+body{
+  margin:0; font-family:system-ui,Segoe UI,Roboto,Arial;
+  color:var(--text);
+  background: radial-gradient(1200px 500px at 20% -20%, #163a70 0%, var(--bg2) 35%, var(--bg) 65%),
+              linear-gradient(180deg, var(--bg2) 0%, var(--bg) 100%);
+}
+.container{max-width:1100px;margin:28px auto;padding:0 16px}
+h1{margin:0 0 18px;font-weight:700;letter-spacing:.2px}
+.header{
+  background: linear-gradient(135deg, #1f2937, #0f172a);
+  border:1px solid var(--border); box-shadow:0 8px 28px var(--shadow);
+  padding:18px 20px; border-radius:16px; display:flex; align-items:center; gap:16px
+}
+.badge{
+  display:inline-block; font-size:12px; color:#fff; background:linear-gradient(90deg, var(--accent2), #06b6d4);
+  padding:6px 10px; border-radius:999px; border:1px solid #0ea5e9
+}
+.card{
+  border:1px solid var(--border); background:linear-gradient(180deg,var(--card),var(--card2));
+  box-shadow:0 8px 24px var(--shadow); border-radius:16px; padding:18px 18px; margin-top:16px
+}
+section h3{margin:0 0 10px}
+label{display:block;margin:8px 0 6px;color:var(--muted);line-height:1.4}
+.field{display:flex;flex-direction:column;justify-content:flex-end}
+.field label{margin-top:0}
+.field input,.field select{
+  padding:10px 12px;font-size:14px;border-radius:10px;border:1px solid #374151;background:#0b1220;color:var(--text);width:100%;box-sizing:border-box
+}
+/* แถว grid items ให้สูงเท่ากัน */
+.grid>.field{align-self:stretch}
+button{cursor:pointer}
+.btn{background:linear-gradient(90deg,var(--accent2),#06b6d4);border:none;color:#fff;
+  box-shadow:0 6px 18px var(--shadow); padding:10px 14px; border-radius:10px; font-size:14px}
+.btn:active{transform:translateY(1px)}
+.btn.secondary{background:linear-gradient(90deg,var(--accent),#16a34a)}
+.btn.warn{background:linear-gradient(90deg,#f59e0b,#f43f5e)}
+.table{border-collapse:collapse;width:100%;margin-top:10px}
+th,td{border:1px solid #1f2937;padding:8px;text-align:left}
+th{background:#0b1220;color:var(--muted)}
+.progress{height:18px;background:#0b1220;border:1px solid #1f2937;border-radius:12px;overflow:hidden;margin-top:8px}
+.progress>div{height:100%;background:linear-gradient(90deg,#22c55e,#10b981,#06b6d4);width:0%;transition:width .3s}
+.small{color:var(--muted);font-size:13px}
+#log{white-space:pre-wrap;background:#0b1220;border:1px solid #1f2937;padding:10px;border-radius:12px;height:120px;overflow:auto;margin-top:10px}
+hr{border:none;border-top:1px solid #1f2937;margin:12px 0}
+footer{margin:20px 0;color:var(--muted);font-size:12px}
+
+/* ===== 12-column Grid System ===== */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:var(--gap)}
+.col-12{grid-column:span 12}
+.col-6{grid-column:span 6}
+.col-4{grid-column:span 4}
+.col-3{grid-column:span 3}
+.col-2{grid-column:span 2}
+
+/* Responsive breakpoints */
+@media (max-width: 900px){
+  .col-6,.col-4{grid-column:span 12}
+  .col-3,.col-2{grid-column:span 6}
+}
+@media (max-width: 600px){
+  .col-6,.col-4,.col-3,.col-2{grid-column:span 12}
+}
+
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-start;margin-top:4px}
+
+/* ===== Tab Switcher ===== */
+.tab-bar{
+  display:flex; justify-content:center; gap:0; margin-top:16px;
+  background:linear-gradient(180deg,#111827,#0f172a);
+  border:1px solid var(--border); border-radius:14px; padding:5px; width:fit-content;
+  margin-left:auto; margin-right:auto;
+}
+.tab-btn{
+  cursor:pointer; border:none; background:transparent; color:var(--muted);
+  padding:9px 28px; border-radius:10px; font-size:15px; font-weight:500;
+  transition:background .2s, color .2s;
+}
+.tab-btn.active{
+  background:linear-gradient(90deg,var(--accent2),#06b6d4);
+  color:#fff; box-shadow:0 4px 14px rgba(59,130,246,.35);
+}
+.tab-btn:hover:not(.active){ background:#1f2937; color:var(--text); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>YOLO Trainer Web</h1>
+    <span class="badge">Upload &#8226; Train &#8226; Download</span>
+  </div>
+
+  <!-- Upload Dataset Card -->
+  <div class="card" id="upload-card">
+    <section>
+      <h3>&#128228; &#3629;&#3633;&#3611;&#3650;&#3627;&#3621;&#3604; Dataset (ZIP)</h3>
+      <form id="uploadForm" class="grid">
+        <div class="field col-6">
+          <label>&#3648;&#3621;&#3639;&#3629;&#3585;&#3652;&#3615;&#3621;&#3660; ZIP &#3586;&#3629;&#3591; Dataset</label>
+          <input type="file" id="dsZip" name="file" accept=".zip" required />
+        </div>
+        <div class="field col-4">
+          <label>&#3605;&#3633;&#3657;&#3591;&#3594;&#3639;&#3656;&#3629; Dataset (a-z,0-9, -, _)</label>
+          <input type="text" id="dsName" name="dataset_name" placeholder="my-dataset" required />
+        </div>
+        <div class="field col-2">
+          <label>&#3611;&#3619;&#3632;&#3648;&#3616;&#3607;&#3591;&#3634;&#3609;</label>
+          <select id="dsTask" name="ds_task">
+            <option value="detect">&#128269; Detection / Segmentation</option>
+            <option value="classify">&#127775; Classification</option>
+            <option value="anomalib">&#128202; Anomalib (Anomaly Detection)</option>
+          </select>
+        </div>
+        <div class="col-12 actions">
+          <button class="btn" type="submit">&#128228; &#3629;&#3633;&#3611;&#3650;&#3627;&#3621;&#3604;</button>
+          <button id="refreshList" class="btn secondary" type="button">&#128260; &#3619;&#3637;&#3648;&#3615;&#3619;&#3594;&#3619;&#3634;&#3618;&#3585;&#3634;&#3619; Dataset</button>
+          <span id="upMsg" class="small"></span>
+        </div>
+      </form>
+      <table id="dsTable" class="table">
+        <thead><tr><th>Dataset</th><th>&#3611;&#3619;&#3632;&#3648;&#3616;&#3607;</th><th>Path</th><th>&#3586;&#3609;&#3634;&#3604;</th><th>&#3592;&#3633;&#3604;&#3585;&#3634;&#3619;</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+  <!-- Tab Switcher -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-detect" onclick="switchTab('detect')">&#128269; Detection</button>
+    <button class="tab-btn" id="tab-segment" onclick="switchTab('segment')">&#9999;&#65039; Segmentation</button>
+    <button class="tab-btn" id="tab-classify" onclick="switchTab('classify')">&#127775; Classification</button>
+    <button class="tab-btn" id="tab-anomalib" onclick="switchTab('anomalib')">&#128202; Anomalib</button>
+  </div>
+
+  <!-- Train Card -->
+  <div class="card" id="train-card">
+    <section>
+      <h3 id="trainTitle">&#127919; Detection &mdash; &#3626;&#3633;&#3656;&#3591;&#3648;&#3607;&#3619;&#3609;</h3>
+      <form id="trainForm" class="grid">
+        <input type="hidden" name="task" id="taskField" value="detect" />
+        <div class="field col-12">
+          <label>&#3648;&#3621;&#3639;&#3629;&#3585; Dataset root (&#3607;&#3637;&#3656;&#3605;&#3619;&#3623;&#3592;&#3614;&#3610; train/ &#3649;&#3621;&#3632; val/)</label>
+          <input type="text" name="dataset_root" id="dataset_root" placeholder="/path/to/dataset_root" required />
+        </div>
+
+        <div class="field col-6" id="classCountField">
+          <label>&#3592;&#3635;&#3609;&#3623;&#3609;&#3588;&#3621;&#3634;&#3626;</label>
+          <input type="number" name="class_count" id="classCountInput" value="1" min="1" required />
+        </div>
+        <div class="field col-6" id="classNamesField">
+          <label>&#3594;&#3639;&#3656;&#3629;&#3588;&#3621;&#3634;&#3626; (&#3588;&#3633;&#3656;&#3609;&#3604;&#3657;&#3623;&#3618;&#3588;&#3629;&#3617;&#3617;&#3634;)</label>
+          <input type="text" name="class_names" id="classNamesInput" placeholder="class1,class2" required />
+        </div>
+        <div id="clsHint" style="display:none;grid-column:1/-1;background:#e8f4fd;border:1px solid #90caf9;border-radius:8px;padding:12px 16px;font-size:.85rem;line-height:1.6;color:#000">
+          <strong>&#128194; &#3650;&#3588;&#3619;&#3591;&#3626;&#3619;&#3657;&#3634;&#3591; Dataset &#3626;&#3635;&#3627;&#3619;&#3633;&#3610; Classification (ImageFolder)</strong><br>
+          <code>dataset_root/train/classA/img1.jpg</code><br>
+          <code>dataset_root/train/classB/img2.jpg</code><br>
+          <code>dataset_root/val/classA/img3.jpg</code><br>
+          <code>dataset_root/val/classB/img4.jpg</code><br>
+          <em>&#3651;&#3626;&#3656;&#3648;&#3593;&#3614;&#3634;&#3632; path &#3586;&#3629;&#3591; dataset_root &#3652;&#3617;&#3656;&#3605;&#3657;&#3629;&#3591;&#3585;&#3619;&#3629;&#3585; class_count &#3627;&#3619;&#3639;&#3629; class_names</em>
+        </div>
+
+        <!-- Classify Framework selector (hidden by default) -->
+        <div id="clsFrameworkRow" style="display:none;grid-column:1/-1;">
+          <div class="grid" style="gap:12px">
+            <div class="field col-12">
+              <label style="font-weight:600;font-size:.9rem;">&#3648;&#3621;&#3639;&#3629;&#3585; Framework &#3626;&#3635;&#3627;&#3619;&#3633;&#3610; Classification</label>
+              <div style="display:flex;gap:12px;margin-top:6px;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 18px;border-radius:8px;border:2px solid var(--border);background:var(--card);transition:.2s;" id="lbl_cls_yolo">
+                  <input type="radio" name="classify_framework" value="yolo" checked onchange="switchClsFramework('yolo')" style="width:16px;height:16px;"/>
+                  <span>&#128640; <b>YOLO</b> <small style="color:var(--muted)">(Ultralytics)</small></span>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 18px;border-radius:8px;border:2px solid var(--border);background:var(--card);transition:.2s;" id="lbl_cls_keras">
+                  <input type="radio" name="classify_framework" value="keras" onchange="switchClsFramework('keras')" style="width:16px;height:16px;"/>
+                  <span>&#129504; <b>Keras</b> <small style="color:var(--muted)">(TensorFlow)</small></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Keras-specific fields (hidden by default) -->
+        <div class="field col-4" id="kerasModelField" style="display:none">
+          <label>Keras Base Model</label>
+          <select id="keras_model_select">
+            <option value="MobileNetV2" selected>MobileNetV2 (&#3648;&#3610;&#3634; &#3648;&#3619;&#3655;&#3623;)</option>
+            <option value="EfficientNetB0">EfficientNetB0 (&#3626;&#3617;&#3604;&#3640;&#3621;)</option>
+            <option value="ResNet50">ResNet50 (&#3649;&#3617;&#3656;&#3609;&#3618;&#3635;)</option>
+            <option value="InceptionV3">InceptionV3 (&#3604;&#3637; + &#3627;&#3609;&#3633;&#3585;)</option>
+            <option value="DenseNet121">DenseNet121 (Feature-rich)</option>
+          </select>
+        </div>
+        <div class="field col-4" id="kerasFreezeField" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="keras_freeze" checked style="width:15px;height:15px;flex-shrink:0;"/>
+            Freeze Base Model
+          </label>
+          <small style="color:var(--muted);font-size:.75rem;">&#3648;&#3611;&#3636;&#3604; = Transfer Learning (&#3648;&#3619;&#3655;&#3623;), &#3611;&#3636;&#3604; = Fine-tune &#3607;&#3640;&#3585; layer</small>
+        </div>
+
+
+        <!-- Anomalib fields (hidden by default) -->
+        <div id="anomalibHint" style="display:none;grid-column:1/-1;background:#fdf6ec;border:1px solid #f6ad55;border-radius:8px;padding:12px 16px;font-size:.85rem;line-height:1.6;color:#000">
+          <strong>&#128202; &#3650;&#3588;&#3619;&#3591;&#3626;&#3619;&#3657;&#3634;&#3591; Dataset &#3626;&#3635;&#3627;&#3619;&#3633;&#3610; Anomalib (Anomaly Detection)</strong><br>
+          <code>dataset_root/normal/img1.jpg</code> &mdash; &#3616;&#3634;&#3614;&#3611;&#3585;&#3605;&#3636; (&#9989; &#3592;&#3635;&#3648;&#3611;&#3655;&#3609;)<br>
+          <code>dataset_root/abnormal/&lt;type&gt;/img2.jpg</code> &mdash; &#3616;&#3634;&#3614;&#3612;&#3636;&#3604;&#3611;&#3585;&#3605;&#3636; (&#128310; optional)<br>
+          <code>dataset_root/ground_truth/&lt;type&gt;/img2_mask.png</code> &mdash; Pixel mask (&#128310; optional &mdash; &#3651;&#3594;&#3657; Segmentation task)<br>
+          <em>&#3651;&#3626;&#3656;&#3648;&#3593;&#3614;&#3634;&#3632; path &#3586;&#3629;&#3591; dataset_root &#3652;&#3617;&#3656;&#3605;&#3657;&#3629;&#3591;&#3585;&#3619;&#3629;&#3585; class_count &#3627;&#3619;&#3639;&#3629; class_names</em>
+        </div>
+        <div class="field col-4" id="anomalibModelField" style="display:none">
+          <label>Anomalib Model</label>
+          <select id="anomalib_model_select">
+            <option value="padim" selected>PaDiM (ResNet18)</option>
+            <option value="patchcore">PatchCore (ResNet18)</option>
+            <option value="stfpm">STFPM</option>
+            <option value="fastflow">FastFlow</option>
+          </select>
+        </div>
+        <div class="field col-4" id="anomalibNormalDirField" style="display:none">
+          <label>&#3594;&#3639;&#3656;&#3629; Folder &#3616;&#3634;&#3614;&#3611;&#3585;&#3605;&#3636;</label>
+          <input type="text" id="anomalib_normal_dir" value="normal" placeholder="normal" />
+        </div>
+        <div class="field col-4" id="anomalibAbnormalDirField" style="display:none">
+          <label>&#3594;&#3639;&#3656;&#3629; Folder &#3616;&#3634;&#3614;&#3612;&#3636;&#3604;&#3611;&#3585;&#3605;&#3636; (optional)</label>
+          <input type="text" id="anomalib_abnormal_dir" value="abnormal" placeholder="abnormal" />
+        </div>
+        <!-- แถวสอง: Pixel Mask + Max Epochs -->
+        <div class="field col-4" id="anomalibMaskDirField" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="anomalib_use_mask" onchange="toggleAnomalibMaskDir()" style="width:15px;height:15px;flex-shrink:0;"/>
+            &#3651;&#3594;&#3657; Pixel Mask (Segmentation)
+          </label>
+          <input type="text" id="anomalib_mask_dir" value="ground_truth" placeholder="ground_truth" disabled style="margin-top:6px;" />
+          <small style="color:var(--muted);font-size:.75rem">&#3650;&#3615;&#3621;&#3648;&#3604;&#3629;&#3619;&#3660; ground_truth/ &#3592;&#3634;&#3585; Export Anomalib</small>
+        </div>
+        <div class="field col-4" id="anomalibMaxEpochsField" style="display:none">
+          <label>Max Epochs</label>
+          <input type="number" id="anomalib_max_epochs" value="1" min="1" />
+        </div>
+
+        <div class="field col-6">
+          <label>Project name</label>
+          <input type="text" name="project_name" value="exp-web" required />
+        </div>
+        <div class="field col-6" id="weightsField">
+          <label>Weights (&#3648;&#3621;&#3639;&#3629;&#3585;&#3650;&#3617;&#3648;&#3604;&#3621;)</label>
+          <select id="model_weight_detect">
+            <option value="Model/yolo11n.pt">YOLO11-N (yolo11n.pt) &mdash; Nano</option>
+            <option value="Model/yolo11s.pt" selected>YOLO11-S (yolo11s.pt) &mdash; Small</option>
+            <option value="Model/yolo11m.pt">YOLO11-M (yolo11m.pt) &mdash; Medium</option>
+            <option value="Model/yolo11l.pt">YOLO11-L (yolo11l.pt) &mdash; Large</option>
+            <option value="Model/yolo11x.pt">YOLO11-X (yolo11x.pt) &mdash; XLarge</option>
+          </select>
+          <select id="model_weight_segment" style="display:none">
+            <option value="Model/yolo11n-seg.pt">YOLO11-N-Seg (yolo11n-seg.pt) &mdash; Nano</option>
+            <option value="Model/yolo11s-seg.pt" selected>YOLO11-S-Seg (yolo11s-seg.pt) &mdash; Small</option>
+            <option value="Model/yolo11m-seg.pt">YOLO11-M-Seg (yolo11m-seg.pt) &mdash; Medium</option>
+            <option value="Model/yolo11l-seg.pt">YOLO11-L-Seg (yolo11l-seg.pt) &mdash; Large</option>
+            <option value="Model/yolo11x-seg.pt">YOLO11-X-Seg (yolo11x-seg.pt) &mdash; XLarge</option>
+          </select>
+          <select id="model_weight_classify" style="display:none">
+            <option value="Model/yolo11n-cls.pt">YOLO11-N-Cls (yolo11n-cls.pt) &mdash; Nano</option>
+            <option value="Model/yolo11s-cls.pt" selected>YOLO11-S-Cls (yolo11s-cls.pt) &mdash; Small</option>
+            <option value="Model/yolo11m-cls.pt">YOLO11-M-Cls (yolo11m-cls.pt) &mdash; Medium</option>
+            <option value="Model/yolo11l-cls.pt">YOLO11-L-Cls (yolo11l-cls.pt) &mdash; Large</option>
+            <option value="Model/yolo11x-cls.pt">YOLO11-X-Cls (yolo11x-cls.pt) &mdash; XLarge</option>
+          </select>
+        </div>
+
+        <div class="field col-3" id="epochsField">
+          <label>Epochs</label>
+          <input type="number" name="epochs" value="100" min="1"/>
+        </div>
+        <div class="field col-3" id="batchField">
+          <label>Batch</label>
+          <input type="number" name="batch" value="32" min="1"/>
+        </div>
+        <div class="field col-3" id="imgszField">
+          <label>ImgSz</label>
+          <input type="number" name="imgsz" value="640" min="1"/>
+        </div>
+        <div class="field col-3" id="deviceField">
+          <label>Device <span style="color:#6b7280;font-size:12px">(Auto / cuda:0 / cpu)</span></label>
+          <input type="text" name="device" placeholder="&#3648;&#3623;&#3657;&#3609;&#3623;&#3656;&#3634;&#3591;=Auto" />
+        </div>
+
+        <div class="col-12 actions">
+          <button class="btn secondary" type="submit">&#3648;&#3619;&#3636;&#3656;&#3617;&#3648;&#3607;&#3619;&#3609;</button>
+          <button class="btn warn" type="button" onclick="cancelJob()">&#3618;&#3585;&#3648;&#3621;&#3636;&#3585;&#3591;&#3634;&#3609;</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <!-- Status Card -->
+  <div class="card" id="status" style="display:none">
+    <section>
+      <h3>&#3626;&#3606;&#3634;&#3609;&#3632;&#3591;&#3634;&#3609;</h3>
+      <!-- Queue Banner -->
+      <div id="queueBanner" style="display:none;background:linear-gradient(90deg,#1e3a5f,#0f2744);border:1px solid #2563eb;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-weight:600;color:#60a5fa;margin-bottom:6px">&#9203; &#3629;&#3618;&#3641;&#3656;&#3651;&#3609;&#3588;&#3636;&#3623;&#3648;&#3607;&#3619;&#3609;</div>
+        <div id="queuePos" class="small"></div>
+        <div id="queueAheadEta" class="small" style="margin-top:4px"></div>
+        <div id="queueMyEta" class="small" style="margin-top:2px"></div>
+      </div>
+      <!-- Progress -->
+      <div id="trainProgress">
+        <div class="progress"><div id="bar"></div></div>
+        <div id="text" class="small">&#3619;&#3629;&#3648;&#3619;&#3636;&#3656;&#3617;...</div>
+        <div id="time" class="small"></div>
+        <div id="map" class="small"></div>
+      </div>
+      <div id="log"></div>
+      <hr/>
+      <div id="download" class="actions"></div>
+    </section>
+  </div>
+
+  <footer>&copy; YOLO Trainer Web &mdash; responsive 12-column grid, modern styling.</footer>
+</div>
+
+<script>
+let ws, jobId;
+let currentTask = 'detect';
+
+function switchTab(task){
+  currentTask = task;
+  ['detect','segment','classify','anomalib'].forEach(t=>{
+    document.getElementById('tab-'+t).classList.toggle('active', task===t);
+  });
+  document.getElementById('taskField').value = task;
+  document.getElementById('model_weight_detect').style.display = task==='detect' ? '' : 'none';
+  document.getElementById('model_weight_segment').style.display = task==='segment' ? '' : 'none';
+  document.getElementById('model_weight_classify').style.display = task==='classify' ? '' : 'none';
+
+  const isCls  = task === 'classify';
+  const isAnom = task === 'anomalib';
+  const isYolo = !isAnom;
+
+  // YOLO โยก fields (class count/names)
+  const ccField = document.getElementById('classCountField');
+  const cnField = document.getElementById('classNamesField');
+  const ccInput = document.getElementById('classCountInput');
+  const cnInput = document.getElementById('classNamesInput');
+  ccField.style.display = (!isCls && !isAnom) ? '' : 'none';
+  cnField.style.display = (!isCls && !isAnom) ? '' : 'none';
+  ccInput.required = (!isCls && !isAnom);
+  cnInput.required = (!isCls && !isAnom);
+
+  // Hints
+  document.getElementById('clsHint').style.display      = isCls  ? '' : 'none';
+  document.getElementById('anomalibHint').style.display = isAnom ? '' : 'none';
+
+  // Classify framework row
+  document.getElementById('clsFrameworkRow').style.display = isCls ? '' : 'none';
+  if(!isCls){
+    // reset to YOLO when leaving classify tab
+    clsFramework = 'yolo';
+    const yoloRadio = document.querySelector('input[name=classify_framework][value=yolo]');
+    if(yoloRadio) yoloRadio.checked = true;
+    switchClsFramework('yolo');
+  }
+  // Keras fields
+  const isKerasCls = isCls && clsFramework === 'keras';
+  ['kerasModelField','kerasFreezeField'].forEach(id=>{
+    document.getElementById(id).style.display = isKerasCls ? '' : 'none';
+  });
+
+  // Anomalib สเปชีล fields
+  ['anomalibModelField','anomalibNormalDirField','anomalibAbnormalDirField','anomalibMaskDirField','anomalibMaxEpochsField'].forEach(id=>{
+    document.getElementById(id).style.display = isAnom ? '' : 'none';
+  });
+  // reset mask checkbox when switching tab
+  if(!isAnom){
+    const cb = document.getElementById('anomalib_use_mask');
+    if(cb){ cb.checked = false; }
+    const mi = document.getElementById('anomalib_mask_dir');
+    if(mi){ mi.disabled = true; }
+  }
+
+  // YOLO epochs/batch/imgsz/device/weights: ซ่อนเมื่อเป็น anomalib
+  const hideYoloParams = isAnom || (isCls && clsFramework === 'keras');
+  ['epochsField','batchField','imgszField','deviceField','weightsField'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = hideYoloParams ? 'none' : '';
+  });
+  // แต่ classify Keras ต้องแสดง epochs
+  if(isCls && clsFramework === 'keras'){
+    document.getElementById('epochsField').style.display = '';
+  }
+
+  const titleEl = document.getElementById('trainTitle');
+  if(task==='detect')      titleEl.innerHTML = '&#127919; Detection &mdash; &#3626;&#3633;&#3656;&#3591;&#3648;&#3607;&#3619;&#3609;';
+  else if(task==='segment') titleEl.innerHTML = '&#9999;&#65039; Segmentation &mdash; &#3626;&#3633;&#3656;&#3591;&#3648;&#3607;&#3619;&#3609;';
+  else if(task==='classify') titleEl.innerHTML = '&#127775; Classification &mdash; &#3626;&#3633;&#3656;&#3591;&#3648;&#3607;&#3619;&#3609;';
+  else titleEl.innerHTML = '&#128202; Anomalib &mdash; &#3626;&#3633;&#3656;&#3591;&#3648;&#3607;&#3619;&#3609;';
+}
+
+function getActiveModelWeight(){
+  const ids = {detect:'model_weight_detect', segment:'model_weight_segment', classify:'model_weight_classify'};
+  return document.getElementById(ids[currentTask] || 'model_weight_detect').value;
+}
+
+let clsFramework = 'yolo';
+function switchClsFramework(fw){
+  clsFramework = fw;
+  const isKeras = fw === 'keras';
+  // YOLO cls weight selector
+  document.getElementById('model_weight_classify').style.display = (!isKeras && currentTask==='classify') ? '' : 'none';
+  // weights field (ซ่อน YOLO weights เมื่อ Keras)
+  document.getElementById('weightsField').style.display = isKeras ? 'none' : '';
+  // Keras specific fields
+  ['kerasModelField','kerasFreezeField'].forEach(id=>{
+    document.getElementById(id).style.display = isKeras ? '' : 'none';
+  });
+  // Radio style
+  document.getElementById('lbl_cls_yolo').style.borderColor  = !isKeras ? 'var(--accent2)' : 'var(--border)';
+  document.getElementById('lbl_cls_keras').style.borderColor = isKeras  ? 'var(--accent2)' : 'var(--border)';
+}
+
+
+
+function toggleAnomalibMaskDir(){
+  const cb = document.getElementById('anomalib_use_mask');
+  const inp = document.getElementById('anomalib_mask_dir');
+  if(cb && inp){
+    inp.disabled = !cb.checked;
+    if(cb.checked && !inp.value) inp.value = 'ground_truth';
+  }
+}
+
+async function fetchDatasets(){
+  const res = await fetch('/api/datasets');
+  const j = await res.json();
+  const tb = document.querySelector('#dsTable tbody');
+  tb.innerHTML = '';
+  j.items.forEach(it=>{
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'); td1.textContent = it.name;
+    // task badge
+    const td2 = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.style.cssText = 'font-size:.78rem;padding:2px 8px;border-radius:12px;font-weight:600;';
+    if(it.task==='classify'){
+      badge.innerHTML='&#127775; Classify';
+      badge.style.background='#e8f4fd'; badge.style.color='#1565c0';
+    } else if(it.task==='anomalib'){
+      badge.innerHTML='&#128202; Anomalib';
+      badge.style.background='#fdf6ec'; badge.style.color='#92400e';
+    } else {
+      badge.innerHTML='&#128269; Detect/Seg';
+      badge.style.background='#f0fdf4'; badge.style.color='#166534';
+    }
+    td2.appendChild(badge);
+    const td3 = document.createElement('td'); td3.textContent = it.path;
+    td3.style.cssText='font-size:.8rem;word-break:break-all;max-width:320px';
+    const td4 = document.createElement('td'); td4.textContent = it.size_human;
+    const td5 = document.createElement('td');
+    const btnUse = document.createElement('button');
+    btnUse.className = 'btn'; btnUse.textContent = '\u0e43\u0e0a\u0e49\u0e0a\u0e38\u0e14\u0e19\u0e35\u0e49';
+    btnUse.onclick = ()=>{
+      document.getElementById('dataset_root').value = it.path;
+      // switch tab ให้ตรงกับ task ของ dataset นี้
+      if(it.task === 'classify') switchTab('classify');
+      else if(it.task === 'anomalib') switchTab('anomalib');
+      window.scrollTo({top: document.getElementById('train-card').offsetTop - 10, behavior:'smooth'});
+    };
+    const btnDel = document.createElement('button');
+    btnDel.className = 'btn warn'; btnDel.style.marginLeft='8px'; btnDel.textContent = '\u0e25\u0e1a';
+    btnDel.onclick = async ()=>{
+      if(!confirm('\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e25\u0e1a dataset \u0e19\u0e35\u0e49?')) return;
+      const r = await fetch('/api/datasets/'+encodeURIComponent(it.name), {method:'DELETE'});
+      if(r.ok){ fetchDatasets(); }
+      else{
+        try{ const jr = await r.json(); alert(jr.detail || '\u0e25\u0e1a\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); }
+        catch(e){ alert('\u0e25\u0e1a\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); }
+      }
+    };
+    td5.appendChild(btnUse); td5.appendChild(btnDel);
+    tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4); tr.appendChild(td5);
+    tb.appendChild(tr);
+  });
+}
+
+document.getElementById('refreshList').addEventListener('click', fetchDatasets);
+
+document.getElementById('uploadForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const f = document.getElementById('dsZip').files[0];
+  const name = document.getElementById('dsName').value.trim();
+  const dsTask = document.getElementById('dsTask').value;
+  if(!f){ alert('\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e44\u0e1f\u0e25\u0e4c ZIP'); return; }
+  if(!name){ alert('\u0e15\u0e31\u0e49\u0e07\u0e0a\u0e37\u0e48\u0e2d dataset'); return; }
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('dataset_name', name);
+  fd.append('ds_task', dsTask);
+  const msg = document.getElementById('upMsg');
+  msg.innerHTML = '&#9203; \u0e01\u0e33\u0e25\u0e31\u0e07\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14...';
+  try {
+    const res = await fetch('/api/upload-dataset', { method:'POST', body: fd });
+    const j = await res.json();
+    if(!res.ok){ alert(j.detail || '\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); msg.textContent=''; return; }
+    msg.innerHTML = '&#9989; \u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08! (' + (j.task==='classify' ? 'Classification' : j.task==='anomalib' ? 'Anomalib' : 'Detection/Segmentation') + ')';
+    document.getElementById('dataset_root').value = j.dataset_root;
+    // switch tab ให้ตรงกับ task ที่อัปโหลด
+    switchTab(j.task || dsTask);
+    fetchDatasets();
+  } catch(err) {
+    msg.textContent = '\u0e40\u0e01\u0e34\u0e14\u0e02\u0e49\u0e2d\u0e1c\u0e34\u0e14\u0e1e\u0e25\u0e32\u0e14: ' + err.message;
+  }
+});
+
+document.getElementById('trainForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const task = fd.get('task') || 'detect';
+  const isCls  = task === 'classify';
+  const isAnom = task === 'anomalib';
+  const isKerasCls = isCls && clsFramework === 'keras';
+  const body = {
+    dataset_root: fd.get('dataset_root'),
+    class_count:  (isCls || isAnom) ? 1 : Number(fd.get('class_count')),
+    class_names:  (isCls || isAnom) ? ['_'] : (fd.get('class_names')||'').split(',').map(s=>s.trim()).filter(Boolean),
+    project_name: fd.get('project_name'),
+    model_weight: (isAnom || isKerasCls) ? 'none' : getActiveModelWeight(),
+    task:         task,
+    epochs:       Number(fd.get('epochs')) || 100,
+    batch:        isKerasCls ? 32 : (Number(fd.get('batch'))  || 32),
+    imgsz:        isKerasCls ? 224 : (Number(fd.get('imgsz'))  || 640),
+    device:       fd.get('device') || null,
+    // Keras classify fields
+    classify_framework: isCls ? clsFramework : 'yolo',
+    keras_model:  isKerasCls ? document.getElementById('keras_model_select').value : null,
+    keras_freeze: isKerasCls ? document.getElementById('keras_freeze').checked : null,
+    // Anomalib fields
+    anomalib_model: isAnom ? document.getElementById('anomalib_model_select').value : null,
+    normal_dir:     isAnom ? (document.getElementById('anomalib_normal_dir').value || 'normal') : null,
+    abnormal_dir:   isAnom ? (document.getElementById('anomalib_abnormal_dir').value || 'abnormal') : null,
+    mask_dir:       (isAnom && document.getElementById('anomalib_use_mask')?.checked)
+                      ? (document.getElementById('anomalib_mask_dir').value || 'ground_truth')
+                      : null,
+    max_epochs:     isAnom ? (Number(document.getElementById('anomalib_max_epochs').value) || 1) : null,
+  };
+  const res = await fetch('/api/train', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const j = await res.json();
+  if(!res.ok){ alert(j.detail || '\u0e40\u0e23\u0e34\u0e48\u0e21\u0e07\u0e32\u0e19\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
+  // แจ้งถ้าชื่อ project ถูกเปลี่ยนเพราะซ้ำ
+  if(j.project_name && j.project_name !== body.project_name){
+    alert('\u26a0\ufe0f \u0e0a\u0e37\u0e48\u0e2d Project "'+body.project_name+'" \u0e21\u0e35\u0e2d\u0e22\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27 \u2192 \u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e40\u0e1b\u0e47\u0e19 "'+j.project_name+'"');
+  }
+  jobId = j.job_id;
+  document.getElementById('status').style.display='block';
+  connectWS(jobId);
+  window.scrollTo({top: document.getElementById('status').offsetTop - 10, behavior:'smooth'});
+});
+
+function connectWS(id){
+  if(ws){ try{ws.close();}catch{} }
+  ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/progress/'+id);
+  ws.onmessage = (ev)=>{
+    const msg = JSON.parse(ev.data);
+    const isQueued = msg.state === 'queued';
+    const banner  = document.getElementById('queueBanner');
+    const progDiv = document.getElementById('trainProgress');
+
+    // ===== Queued State =====
+    if(isQueued){
+      banner.style.display = 'block';
+      progDiv.style.display = 'none';
+      document.getElementById('queuePos').textContent =
+        `\u0e25\u0e33\u0e14\u0e31\u0e1a\u0e43\u0e19\u0e04\u0e34\u0e27: \u0e17\u0e35\u0e48 ${msg.queue_position ?? '?'}`;
+      if(msg.queued_ahead_eta){
+        document.getElementById('queueAheadEta').textContent =
+          `\u0e07\u0e32\u0e19\u0e17\u0e35\u0e48\u0e01\u0e33\u0e25\u0e31\u0e07\u0e40\u0e17\u0e23\u0e19\u0e04\u0e32\u0e14\u0e27\u0e48\u0e32\u0e40\u0e2a\u0e23\u0e47\u0e08: ${msg.queued_ahead_eta}`;
+      } else {
+        document.getElementById('queueAheadEta').textContent = '\u0e07\u0e32\u0e19\u0e17\u0e35\u0e48\u0e01\u0e33\u0e25\u0e31\u0e07\u0e40\u0e17\u0e23\u0e19: \u0e01\u0e33\u0e25\u0e31\u0e07\u0e1b\u0e23\u0e30\u0e40\u0e21\u0e34\u0e19 ETA...';
+      }
+      if(msg.queued_eta_finish){
+        document.getElementById('queueMyEta').textContent =
+          `\u0e07\u0e32\u0e19\u0e19\u0e35\u0e49\u0e04\u0e32\u0e14\u0e27\u0e48\u0e32\u0e08\u0e30\u0e40\u0e23\u0e34\u0e48\u0e21\u0e44\u0e14\u0e49\u0e2b\u0e25\u0e31\u0e07: ${msg.queued_eta_finish}`;
+      }
+      const log = document.getElementById('log');
+      log.textContent = msg.message || '\u0e23\u0e2d\u0e04\u0e34\u0e27\u0e2d\u0e22\u0e39\u0e48...';
+      return;
+    }
+
+    // ===== Running / Completed / Failed State =====
+    banner.style.display = 'none';
+    progDiv.style.display = 'block';
+    if(msg.percent!=null){
+      document.getElementById('bar').style.width = (msg.percent.toFixed(1))+'%';
+    }
+    let t = `State: ${msg.state}`;
+    if(msg.epoch!=null && msg.epochs!=null) t += ` | Epoch: ${msg.epoch}/${msg.epochs} (${msg.percent?.toFixed(1)}%)`;
+    document.getElementById('text').textContent = t;
+    if(msg.elapsed || msg.remaining || msg.eta_finish){
+      document.getElementById('time').textContent =
+        `Elapsed: ${msg.elapsed||'-'} | Remaining: ${msg.remaining||'-'}${msg.eta_finish?(' | Finish at: '+msg.eta_finish):''}`;
+    }
+    if(msg.map5095!=null){
+      document.getElementById('map').textContent = `mAP50-95: ${msg.map5095.toFixed(4)}`;
+    }
+    if(msg.message){
+      const log = document.getElementById('log');
+      log.textContent = msg.message;
+      log.scrollTop = log.scrollHeight;
+    }
+    if(msg.state==='completed'){
+      const d = document.getElementById('download');
+      d.innerHTML = '';
+      const isAnom = (currentTask === 'anomalib');
+      const isKeras = msg.best_ckpt_path && (msg.best_ckpt_path.endsWith('.h5') || msg.best_ckpt_path.endsWith('.keras'));
+      if(msg.best_exists){
+        const a1 = document.createElement('a');
+        a1.className = 'btn secondary';
+        if(isAnom){
+          a1.href = `/api/download/${msg.job_id}?type=ckpt`;
+          a1.textContent = '\ud83d\udcbe Download model.ckpt';
+        } else if(isKeras){
+          a1.href = `/api/download/${msg.job_id}?type=ckpt`;
+          a1.textContent = '\ud83e\udde0 Download best_model.h5';
+        } else {
+          a1.href = `/api/download/${msg.job_id}?type=best`;
+          a1.textContent = '\ud83d\ude80 Download best.pt';
+        }
+        a1.style.marginRight='8px';
+        d.appendChild(a1);
+      } else {
+        const p = document.createElement('span');
+        p.className = 'small';
+        p.textContent = isAnom ? '\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e44\u0e1f\u0e25\u0e4c model.ckpt' : isKeras ? '\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e44\u0e1f\u0e25\u0e4c best_model.h5' : '\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e44\u0e1f\u0e25\u0e4c best.pt';
+        d.appendChild(p);
+      }
+      if(msg.artifact_path){
+        const a2 = document.createElement('a');
+        a2.className = 'btn';
+        a2.href = `/api/download/${msg.job_id}?type=zip`;
+        a2.innerHTML = '&#128194; Download All (ZIP)';
+        d.appendChild(a2);
+      }
+    }
+  };
+  ws.onclose = ()=>{ console.log('WS closed'); };
+}
+
+async function cancelJob(){
+  if(!jobId){ alert('\u0e44\u0e21\u0e48\u0e21\u0e35\u0e07\u0e32\u0e19\u0e17\u0e35\u0e48\u0e01\u0e33\u0e25\u0e31\u0e07\u0e23\u0e31\u0e19'); return; }
+  if(!confirm('\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01\u0e07\u0e32\u0e19\u0e19\u0e35\u0e49?')) return;
+  const res = await fetch('/api/cancel/'+jobId, {method:'POST'});
+  const j = await res.json();
+  if(!res.ok){ alert(j.detail || '\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08'); return; }
+  alert('\u0e2a\u0e48\u0e07\u0e04\u0e33\u0e02\u0e2d\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01\u0e41\u0e25\u0e49\u0e27');
+}
+
+// โหลด datasets ตอนเปิดหน้า
+document.addEventListener('DOMContentLoaded', fetchDatasets);
+</script>
+</body></html>
