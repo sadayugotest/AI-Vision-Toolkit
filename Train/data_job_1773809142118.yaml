@@ -1,0 +1,7 @@
+path: C:\Users\c028479\PycharmProjects\pythonProject\train\Train\datasets\A1\dataset
+nc: 2
+names:
+- NG
+- OK
+train: C:\Users\c028479\PycharmProjects\pythonProject\train\Train\datasets\A1\dataset\train
+val: C:\Users\c028479\PycharmProjects\pythonProject\train\Train\datasets\A1\dataset\val
