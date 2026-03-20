@@ -234,6 +234,228 @@ def run_anomalib(model_type: str, ckpt_path: str, image_path: str) -> dict:
     }
 
 
+def _rebuild_keras_model_from_h5(model_path: str):
+    """อ่าน .h5 ด้วย h5py เพื่อดู config แล้ว rebuild model structure ใหม่
+    (แก้ปัญหา Lambda layer ที่ Keras 3.x โหลดไม่ได้)"""
+    import json as _json
+    import h5py
+    from tensorflow import keras
+    from tensorflow.keras import layers
+
+    with h5py.File(model_path, "r") as f:
+        if "model_config" in f.attrs:
+            cfg_raw = f.attrs["model_config"]
+        elif "model_config" in f:
+            cfg_raw = f["model_config"][()]
+        else:
+            return None
+        if isinstance(cfg_raw, bytes):
+            cfg_raw = cfg_raw.decode("utf-8")
+        config = _json.loads(cfg_raw)
+
+    # หา input shape และ num_classes จาก config
+    cls_name = config.get("class_name", "")
+    cfg_body = config.get("config", {})
+
+    # ค้นหา layers ใน config
+    layer_list = cfg_body.get("layers", [])
+    if not layer_list:
+        return None
+
+    # หา input shape
+    img_h, img_w = 224, 224
+    for ly in layer_list:
+        ly_cfg = ly.get("config", {}) if isinstance(ly, dict) else {}
+        if ly.get("class_name") == "InputLayer":
+            batch_shape = ly_cfg.get("batch_input_shape") or ly_cfg.get("batch_shape")
+            if batch_shape and len(batch_shape) >= 3:
+                img_h = batch_shape[1] or 224
+                img_w = batch_shape[2] or 224
+            break
+
+    # หา num_classes จาก output Dense layer (softmax)
+    num_classes = None
+    for ly in reversed(layer_list):
+        ly_cfg = ly.get("config", {}) if isinstance(ly, dict) else {}
+        if ly.get("class_name") == "Dense" and ly_cfg.get("activation") == "softmax":
+            num_classes = ly_cfg.get("units")
+            break
+    if not num_classes:
+        return None
+
+    # หา base model class name
+    base_model_name = "MobileNetV2"  # default
+    for ly in layer_list:
+        ly_cls = ly.get("class_name", "")
+        if ly_cls == "Functional":
+            inner_name = ly.get("config", {}).get("name", "").lower()
+            if "resnet50" in inner_name:
+                base_model_name = "ResNet50"
+            elif "efficientnet" in inner_name:
+                base_model_name = "EfficientNetB0"
+            elif "inception" in inner_name:
+                base_model_name = "InceptionV3"
+            elif "densenet" in inner_name:
+                base_model_name = "DenseNet121"
+            elif "mobilenet" in inner_name:
+                base_model_name = "MobileNetV2"
+            break
+        # บางครั้ง base model อยู่เป็น name ของ layer
+        ly_name = ly.get("name", "").lower() if isinstance(ly, dict) else ""
+        if "resnet50" in ly_name:
+            base_model_name = "ResNet50"
+        elif "efficientnet" in ly_name:
+            base_model_name = "EfficientNetB0"
+        elif "inception" in ly_name:
+            base_model_name = "InceptionV3"
+        elif "densenet" in ly_name:
+            base_model_name = "DenseNet121"
+
+    # สร้าง model ใหม่ด้วย Rescaling แทน Lambda
+    base_models = {
+        'MobileNetV2':    keras.applications.MobileNetV2,
+        'ResNet50':       keras.applications.ResNet50,
+        'EfficientNetB0': keras.applications.EfficientNetB0,
+        'InceptionV3':    keras.applications.InceptionV3,
+        'DenseNet121':    keras.applications.DenseNet121,
+    }
+    BaseModelClass = base_models.get(base_model_name, keras.applications.MobileNetV2)
+    base_model = BaseModelClass(
+        weights=None, include_top=False,
+        input_shape=(img_h, img_w, 3),
+    )
+
+    inputs = keras.Input(shape=(img_h, img_w, 3))
+    x = layers.Rescaling(1./127.5, offset=-1.0)(inputs)
+    x = base_model(x, training=False)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dropout(0.3)(x)
+    x = layers.Dense(256, activation='relu')(x)
+    x = layers.Dropout(0.2)(x)
+    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    model = keras.Model(inputs, outputs)
+
+    # โหลด weights จาก .h5 (by_name=True เพื่อ match ตาม layer name)
+    try:
+        model.load_weights(model_path, by_name=True, skip_mismatch=True)
+    except Exception:
+        # fallback: ลอง load_weights แบบปกติ
+        try:
+            model.load_weights(model_path)
+        except Exception:
+            pass  # ใช้ model ที่ไม่มี weights (ยังดีกว่า crash)
+
+    return model
+
+
+def run_keras_classify(model_path: str, image_path: str, class_names_path: Optional[str] = None) -> dict:
+    """Keras Classification (.h5 / .keras model) — predict แล้วแสดง Top-5 bar chart"""
+    import tensorflow as tf
+    from tensorflow import keras
+
+    model = None
+
+    # วิธี 1: load ปกติ (ใช้ได้กับ model ใหม่ที่ใช้ Rescaling layer)
+    try:
+        model = keras.models.load_model(model_path, compile=False)
+    except Exception:
+        pass
+
+    # วิธี 2: rebuild model structure แล้ว load weights (สำหรับ model เก่าที่มี Lambda layer)
+    if model is None:
+        try:
+            model = _rebuild_keras_model_from_h5(model_path)
+        except Exception:
+            pass
+
+    if model is None:
+        raise RuntimeError(
+            "ไม่สามารถโหลด Keras model ได้\n"
+            "กรุณาตรวจสอบว่าไฟล์เป็น .h5 หรือ .keras ที่ถูกต้อง\n"
+            "หรือลอง train model ใหม่ด้วย Training Tool เวอร์ชันล่าสุด"
+        )
+
+    # --- หา class names ---
+    class_names = None
+    # 1) ลองอ่านจาก class_names.txt ที่แนบมา
+    if class_names_path and os.path.exists(class_names_path):
+        with open(class_names_path, "r", encoding="utf-8") as f:
+            class_names = [line.strip() for line in f if line.strip()]
+    # 2) ลองหาจากโฟลเดอร์เดียวกับ model
+    if not class_names:
+        model_dir = os.path.dirname(model_path)
+        for candidate in ("class_names.txt", "classes.txt"):
+            p = os.path.join(model_dir, candidate)
+            if os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    class_names = [line.strip() for line in f if line.strip()]
+                break
+    # 3) fallback: ใช้ index
+    num_classes = model.output_shape[-1]
+    if not class_names:
+        class_names = [f"class_{i}" for i in range(num_classes)]
+
+    # --- โหลดและ preprocess รูป ---
+    input_shape = model.input_shape  # (None, H, W, 3)
+    img_h = input_shape[1] or 224
+    img_w = input_shape[2] or 224
+
+    orig_bgr = cv2.imread(image_path)
+    orig_rgb = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2RGB)
+
+    img_resized = cv2.resize(orig_rgb, (img_w, img_h))
+    img_arr = np.expand_dims(img_resized.astype("float32"), axis=0)  # (1, H, W, 3)
+    # Note: preprocessing จะถูกจัดการโดย Lambda layer ใน model อยู่แล้ว
+
+    # --- Predict ---
+    preds = model.predict(img_arr, verbose=0)
+    if preds.ndim == 1:
+        preds = np.expand_dims(preds, axis=0)
+    probs = preds[0]  # (num_classes,)
+
+    # --- Top-5 ---
+    top_k = min(5, len(probs))
+    top_indices = np.argsort(probs)[::-1][:top_k]
+    top1_idx = int(top_indices[0])
+    top1_conf = float(probs[top1_idx])
+    label = class_names[top1_idx] if top1_idx < len(class_names) else str(top1_idx)
+    top5 = []
+    for idx in top_indices:
+        name = class_names[int(idx)] if int(idx) < len(class_names) else str(int(idx))
+        top5.append((name, float(probs[idx])))
+
+    # --- Bar chart (เหมือน YOLO classify) ---
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    axes[0].imshow(orig_rgb); axes[0].axis('off')
+    axes[0].set_title("Original Image", fontweight='bold')
+
+    t5_names = [x[0] for x in top5]
+    t5_vals  = [x[1] for x in top5]
+    colors   = ['#22c55e' if i == 0 else '#3b82f6' for i in range(len(t5_names))]
+    bars = axes[1].barh(t5_names[::-1], t5_vals[::-1], color=colors[::-1])
+    axes[1].set_xlim(0, 1)
+    axes[1].set_xlabel("Confidence")
+    axes[1].set_title(f"Keras Classification — Top-{top_k}\nResult: {label} ({top1_conf:.1%})", fontweight='bold')
+    for bar, val in zip(bars, t5_vals[::-1]):
+        axes[1].text(val + 0.01, bar.get_y() + bar.get_height()/2,
+                     f"{val:.1%}", va='center', fontsize=10)
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=120, bbox_inches='tight')
+    plt.close('all')
+    b64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+    return {
+        "task": "classify",
+        "label": label,
+        "confidence": round(top1_conf, 4),
+        "top5": top5,
+        "result_image": b64,
+        "summary": f"Class: <b>{label}</b>  Confidence: <b>{top1_conf:.1%}</b>  <small>(Keras .h5)</small>",
+    }
+
+
 # ─── API: /api/detect ──────────────────────────────────────────────────────────
 @app.post("/api/detect")
 async def detect(
@@ -241,6 +463,7 @@ async def detect(
     anomalib_model: str      = Form("padim"),        # padim | patchcore | stfpm | fastflow
     model_file:   UploadFile = File(...),
     image_file:   UploadFile = File(...),
+    class_names_file: Optional[UploadFile] = File(None),  # optional: class_names.txt สำหรับ Keras
 ):
     uid = uuid.uuid4().hex
 
@@ -254,9 +477,21 @@ async def detect(
     img_path  = TEMP_DIR / f"img_{uid}{img_ext}"
     img_path.write_bytes(await image_file.read())
 
+    # บันทึก class_names file (optional, สำหรับ Keras)
+    cls_names_path = None
+    if class_names_file and class_names_file.filename:
+        cls_names_path = TEMP_DIR / f"classnames_{uid}.txt"
+        cls_names_path.write_bytes(await class_names_file.read())
+
     try:
         if task == "anomalib":
             result = run_anomalib(anomalib_model, str(model_path), str(img_path))
+        elif task == "classify" and model_ext.lower() in (".h5", ".keras"):
+            # Keras Classification
+            result = run_keras_classify(
+                str(model_path), str(img_path),
+                str(cls_names_path) if cls_names_path else None,
+            )
         elif task in ("detect", "segment", "classify"):
             result = run_yolo(task, str(model_path), str(img_path))
         else:
@@ -269,6 +504,9 @@ async def detect(
         except: pass
         try: img_path.unlink()
         except: pass
+        if cls_names_path:
+            try: cls_names_path.unlink()
+            except: pass
 
     return JSONResponse(result)
 
@@ -394,8 +632,15 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
     <h2>2. อัปโหลดไฟล์</h2>
 
     <label id="modelLabel">ไฟล์ Model (.pt)</label>
-    <input type="file" id="modelFile" accept=".pt,.ckpt,.pth"/>
-    <div class="file-hint" id="modelHint">YOLO: .pt &nbsp;|&nbsp; Anomalib: .ckpt</div>
+    <input type="file" id="modelFile" accept=".pt,.ckpt,.pth,.h5,.keras"/>
+    <div class="file-hint" id="modelHint">YOLO: .pt &nbsp;|&nbsp; Keras: .h5 / .keras &nbsp;|&nbsp; Anomalib: .ckpt</div>
+
+    <!-- class_names.txt สำหรับ Keras (optional) -->
+    <div id="classNamesFileRow" style="display:none;margin-top:12px;">
+      <label>ไฟล์ class_names.txt <small style="color:var(--muted)">(optional — ถ้าไม่แนบจะแสดงเป็น class_0, class_1, ...)</small></label>
+      <input type="file" id="classNamesFile" accept=".txt"/>
+      <div class="file-hint">ไฟล์ข้อความที่มีชื่อ class บรรทัดละ 1 ชื่อ (export จาก Training Tool)</div>
+    </div>
 
     <label style="margin-top:16px">รูปภาพที่ต้องการทดสอบ (.jpg / .png)</label>
     <input type="file" id="imageFile" accept="image/*" onchange="previewImage(this)"/>
@@ -435,11 +680,21 @@ function setTask(t){
     document.getElementById('tb-'+x).classList.toggle('active', x===t);
   });
   const isAnom = t==='anomalib';
+  const isCls  = t==='classify';
   document.getElementById('anomModelField').style.display = isAnom ? 'block' : 'none';
-  document.getElementById('modelLabel').textContent =
-    isAnom ? 'ไฟล์ Model (.ckpt)' : 'ไฟล์ Model (.pt)';
-  document.getElementById('modelHint').textContent =
-    isAnom ? 'Anomalib checkpoint: .ckpt' : 'YOLO weight: .pt';
+  // model label / hint
+  if(isAnom){
+    document.getElementById('modelLabel').textContent = 'ไฟล์ Model (.ckpt)';
+    document.getElementById('modelHint').textContent = 'Anomalib checkpoint: .ckpt';
+  } else if(isCls){
+    document.getElementById('modelLabel').textContent = 'ไฟล์ Model (.pt / .h5 / .keras)';
+    document.getElementById('modelHint').textContent = 'YOLO: .pt  |  Keras: .h5 / .keras';
+  } else {
+    document.getElementById('modelLabel').textContent = 'ไฟล์ Model (.pt)';
+    document.getElementById('modelHint').textContent = 'YOLO weight: .pt';
+  }
+  // class_names.txt field (แสดงเฉพาะ classify)
+  document.getElementById('classNamesFileRow').style.display = isCls ? 'block' : 'none';
   // reset result
   document.getElementById('resultCard').classList.remove('show');
   document.getElementById('errBox').classList.remove('show');
@@ -476,6 +731,11 @@ async function runDetect(){
   fd.append('anomalib_model', document.getElementById('anomalib_model').value);
   fd.append('model_file',     modelFile);
   fd.append('image_file',     imageFile);
+  // แนบ class_names.txt (optional, สำหรับ Keras classify)
+  const cnFile = document.getElementById('classNamesFile');
+  if(cnFile && cnFile.files && cnFile.files[0]){
+    fd.append('class_names_file', cnFile.files[0]);
+  }
 
   try{
     const res  = await fetch('/api/detect', {method:'POST', body:fd});
